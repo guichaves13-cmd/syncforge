@@ -1,0 +1,33 @@
+# SyncForge backend
+fastapi>=0.115
+uvicorn[standard]>=0.34
+websockets>=13
+pydantic>=2.9
+python-dotenv>=1.0
+
+# Whisper / TTS
+faster-whisper>=1.0
+edge-tts>=7.0
+
+# LLMs
+google-genai>=0.8
+groq>=0.11
+openai>=1.50
+
+# Stock / video
+yt-dlp>=2025.1
+requests>=2.32
+beautifulsoup4>=4.12
+
+# Embeddings (local fallback)
+transformers>=4.45
+torch>=2.4
+pillow>=10.4
+numpy>=2.0
+
+# Video / image
+opencv-python-headless>=4.10
+imagehash>=4.3
+
+# NLP
+spacy>=3.7

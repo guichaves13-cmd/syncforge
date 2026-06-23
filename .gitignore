@@ -1,0 +1,51 @@
+# ─── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ─── Virtualenvs ────────────────────────────────────────────
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+
+# ─── Node / Next.js ─────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# ─── Build / dist artifacts ─────────────────────────────────
+dist/.build/
+dist/out/
+build/
+*.spec.bak
+
+# ─── Runtime storage (user data, never commit) ──────────────
+storage/
+backend/storage/
+*.sqlite
+*.db
+
+# ─── Secrets ────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Editor / OS ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ─── Logs ───────────────────────────────────────────────────
+*.log
+logs/

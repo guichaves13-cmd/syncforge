@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+html, body {
+  background: #0a0a0c;
+  color: #f2f2f5;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+* { border-color: #23232a; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium
+           transition-colors text-sm;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white hover:bg-accent-hover;
+  }
+  .btn-ghost {
+    @apply btn text-ink-muted hover:text-ink hover:bg-bg-soft;
+  }
+  .card {
+    @apply bg-bg-card border border-line rounded-xl p-5;
+  }
+  .input {
+    @apply w-full bg-bg-soft border border-line rounded-lg px-3 py-2
+           text-sm text-ink placeholder:text-ink-subtle
+           focus:outline-none focus:border-accent transition-colors;
+  }
+  .label {
+    @apply block text-xs font-medium uppercase tracking-wide text-ink-muted mb-1.5;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs;
+  }
+}
