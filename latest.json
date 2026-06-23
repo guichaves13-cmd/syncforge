@@ -1,0 +1,18 @@
+{
+  "version": "0.5.0",
+  "released_at": "2026-06-23",
+  "min_required": "0.5.0",
+  "channels": {
+    "stable": {
+      "url": "https://github.com/syncforge/syncforge/releases/download/v0.5.0/SyncForge-v0.5.0-win64.zip",
+      "sha256": "0f878aad3c425f52f85926805b464346a6da2e2e4945a6c9911cd775ff3ab285",
+      "size": 61464112
+    },
+    "preview": {
+      "url": "https://github.com/syncforge/syncforge/releases/download/v0.5.0-preview/SyncForge-v0.5.0-preview-win64.zip",
+      "sha256": "",
+      "size": 0
+    }
+  },
+  "notes_url": "https://github.com/syncforge/syncforge/releases/tag/v0.5.0"
+}

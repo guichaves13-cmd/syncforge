@@ -1,12 +1,11 @@
-# SyncForge backend
+# SyncForge backend — CORE deps (ships in .exe bundle)
 fastapi>=0.115
 uvicorn[standard]>=0.34
 websockets>=13
 pydantic>=2.9
 python-dotenv>=1.0
 
-# Whisper / TTS
-faster-whisper>=1.0
+# TTS
 edge-tts>=7.0
 
 # LLMs
@@ -19,15 +18,11 @@ yt-dlp>=2025.1
 requests>=2.32
 beautifulsoup4>=4.12
 
-# Embeddings (local fallback)
-transformers>=4.45
-torch>=2.4
+# Image / pHash dedup
 pillow>=10.4
+imagehash>=4.3
 numpy>=2.0
 
-# Video / image
-opencv-python-headless>=4.10
-imagehash>=4.3
-
-# NLP
-spacy>=3.7
+# Optional ML deps (install via requirements-ml.txt only if you need
+# SigLIP-2 local embeddings or Whisper local transcription):
+#   pip install -r backend/requirements-ml.txt

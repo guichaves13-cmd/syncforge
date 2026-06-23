@@ -9,9 +9,9 @@ if not exist backend\venv (
     python -m venv backend\venv
 )
 call backend\venv\Scripts\activate
-pip install --quiet --upgrade pip
-pip install --quiet -r backend\requirements.txt
-pip install --quiet pyinstaller
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r backend\requirements.txt
+python -m pip install --quiet pyinstaller
 
 pyinstaller --noconfirm --clean --workpath dist\.build --distpath dist\out dist\syncforge.spec
 

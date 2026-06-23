@@ -1,0 +1,11 @@
+# OPTIONAL heavy ML deps. Install if you want:
+#   - SigLIP-2 local embeddings (no Gemini API quota cost)
+#   - faster-whisper local transcription (for F5-TTS clone workflow)
+#
+# Adds ~2.5GB to the installation.
+
+faster-whisper>=1.0
+transformers>=4.45
+torch>=2.4
+opencv-python-headless>=4.10
+spacy>=3.7
