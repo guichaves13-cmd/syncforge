@@ -12,6 +12,7 @@ from .youtube import YouTubeSource
 from .coverr import CoverrSource
 from .mixkit import MixkitSource
 from .wikimedia import WikimediaSource
+from .openverse import OpenverseSource
 
 
 def build_sources() -> tuple[
@@ -24,12 +25,14 @@ def build_sources() -> tuple[
     cov = CoverrSource()
     mix = MixkitSource()
     wik = WikimediaSource()
+    ov = OpenverseSource()
 
     searches: dict[str, Callable[[str, int], list[Candidate]]] = {
         "pexels": pex.search,
         "pixabay": pix.search,
         "youtube": yt.search,
         "wikimedia": wik.search,
+        "openverse": ov.search,
     }
     # Optional sources only if env present / scraper desired
     if os.getenv("COVERR_API_KEY"):
@@ -45,10 +48,22 @@ def build_sources() -> tuple[
         "pixabay": pix.download,
         "youtube": yt.download,
         "wikimedia": wik.download,
+        "wikimedia_brand": wik.download,        # same file pipeline, just re-tagged
+        "openverse": ov.download,
+        "openverse_photo": ov.download,
         "coverr": cov.download,
         "mixkit": mix.download,
     }
     return searches, downloads
+
+
+def build_brand_searches() -> dict[str, Callable[[str, int], list[Candidate]]]:
+    """Brand-specific searches — used by the retriever when a concept window
+    has a `dominant_entity` classified as a Brand or Product."""
+    return {
+        "wikimedia_brand": WikimediaSource().search_brand_assets,
+        "openverse_brand": OpenverseSource().search,    # generic search works well for brands
+    }
 
 
 def download_by_source(c: Candidate, output_dir: Path,
