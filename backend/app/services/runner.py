@@ -233,3 +233,224 @@ def run_pipeline(
                             if b.is_solved and b.chosen and
                             b.chosen.source.endswith("_photo")),
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# Viderush-mode pipeline (Phase 6 wire-up)
+# ═════════════════════════════════════════════════════════════════════════
+
+from .sync.beat_snap import beat_snap, BeatSnapConfig
+from .sync.concept import (
+    ConceptWindow,
+    group_into_clusters,
+    segment_into_windows,
+)
+from .sync.pipeline import Intent, SyncedBeat
+from .sync.sticky import build_sticky_pools
+from .sync.temporal_verifier import (
+    TemporalVerifyConfig,
+    TemporalVisionVerifier,
+)
+from .stock.factory import build_brand_searches
+from .subtitles.styles import auto_style, build_ass as build_ass_styled
+
+
+def run_pipeline_viderush(
+    script_text: str,
+    voice: str,
+    title: str,
+    theme: str,
+    output_dir: Path,
+    *,
+    mood: str = "",
+    enable_temporal_vision: bool = True,
+    enable_brand_aware: bool = True,
+    enable_beat_snap: bool = True,
+    enable_color_grading: bool = True,
+    subtitle_style: str | None = None,
+    progress: Callable[[dict], None] | None = None,
+) -> dict:
+    """End-to-end pipeline with ALL Phase 6 modules wired:
+      • Concept-window segmentation (2-4s cuts)
+      • Beat-snap to TTS silences
+      • Sticky b-roll allocation per cluster
+      • NER + brand-aware retrieval
+      • Temporal Vision verification (optional)
+      • Color grading per-clip
+      • Auto-picked subtitle style
+
+    Returns the same shape as run_pipeline() so callers can swap freely.
+    """
+    progress = progress or (lambda _e: None)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    job_id = uuid.uuid4().hex[:10]
+
+    # ── 1. TTS ─────────────────────────────────────────────────────────
+    progress({"event": "step", "step": "tts", "status": "start"})
+    audio_path = str(output_dir / f"{job_id}_audio.mp3")
+    tts = synth_sync(script_text, voice, audio_path)
+    progress({"event": "step", "step": "tts", "status": "done",
+              "sentences": len(tts.sentences)})
+    if not tts.sentences:
+        return {"ok": False, "error": "no sentence boundaries from TTS"}
+
+    # ── 2. Sentence clauses → Concept windows ──────────────────────────
+    progress({"event": "step", "step": "concept_windows", "status": "start"})
+    clauses = [NarrationClause(start=s["start"], end=s["end"], text=s["text"])
+               for s in tts.sentences if s.get("text")]
+    windows = segment_into_windows(clauses)
+    if enable_beat_snap:
+        windows = beat_snap(windows, audio_path, BeatSnapConfig())
+    group_into_clusters(windows)
+    progress({"event": "step", "step": "concept_windows", "status": "done",
+              "windows": len(windows),
+              "clusters": len({w.cluster_id for w in windows})})
+
+    # ── 3. Build sticky allocator ──────────────────────────────────────
+    progress({"event": "step", "step": "sticky_pools", "status": "start"})
+    searches, downloads = build_sources()
+    brand_searches = build_brand_searches() if enable_brand_aware else {}
+
+    def _base_search(query, n=4):
+        # Probe pexels first (fastest) then pixabay as backup
+        out = searches.get("pexels", lambda q, n: [])(query, n)
+        if len(out) < n:
+            out.extend(searches.get("pixabay", lambda q, n: [])(query, n - len(out)))
+        return out
+
+    def _brand_search(brand, n=2):
+        out = []
+        for name, fn in brand_searches.items():
+            try: out.extend(fn(brand, n))
+            except Exception: pass
+            if len(out) >= n:
+                break
+        return out
+
+    allocator = build_sticky_pools(
+        windows,
+        base_search=_base_search,
+        brand_search=_brand_search if enable_brand_aware else None,
+    )
+    progress({"event": "step", "step": "sticky_pools", "status": "done",
+              "pools": len(allocator.pools)})
+
+    # ── 4. Per-window allocation → download → optional Vision ──────────
+    progress({"event": "step", "step": "sync", "status": "start",
+              "windows": len(windows)})
+    keys = LLMKeys.from_env()
+    dedup = DedupStore()
+    temporal_verifier = None
+    if enable_temporal_vision and keys.gemini:
+        temporal_verifier = TemporalVisionVerifier(
+            TemporalVerifyConfig(gemini_api_key=keys.gemini)
+        )
+
+    clips_dir = output_dir / "_clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    beats: list[SyncedBeat] = []
+    for i, w in enumerate(windows):
+        cand = allocator.next_for(w)
+        if cand is None:
+            beats.append(SyncedBeat(clause=w, intent=Intent(),
+                                     chosen=None, error="no allocation"))
+            continue
+        # Download
+        path = download_by_source(cand, clips_dir, downloads)
+        if not path:
+            beats.append(SyncedBeat(clause=w, intent=Intent(),
+                                     chosen=None, error="download failed"))
+            continue
+        # pHash dedup
+        try:
+            hashes = phash_video(path, samples=3)
+            if hashes and dedup.is_duplicate(hashes):
+                Path(path).unlink(missing_ok=True)
+                beats.append(SyncedBeat(clause=w, intent=Intent(),
+                                         chosen=None, error="duplicate"))
+                continue
+            if hashes: dedup.add(hashes)
+        except Exception:
+            pass
+        cand.local_path = path
+        # Temporal Vision (optional, costly)
+        if temporal_verifier is not None:
+            verdict = temporal_verifier.verify(
+                cand, w.text, topic=theme,
+                era="modern", mood=w.mood or mood or "neutral",
+            )
+            if not verdict.get("approved"):
+                beats.append(SyncedBeat(clause=w, intent=Intent(),
+                                         chosen=None,
+                                         rejected=[cand],
+                                         error="vision rejected"))
+                continue
+        beats.append(SyncedBeat(clause=w, intent=Intent(), chosen=cand))
+        if (i + 1) % 10 == 0:
+            progress({"event": "step", "step": "sync", "progress": (i + 1) / len(windows)})
+
+    solved = sum(1 for b in beats if b.is_solved)
+    progress({"event": "step", "step": "sync", "status": "done",
+              "solved": solved, "total": len(beats)})
+
+    # ── 5. Compose with color grading ──────────────────────────────────
+    progress({"event": "step", "step": "compose", "status": "start"})
+    cfg = ComposeConfig()
+    composed = str(output_dir / f"{job_id}_composed.mp4")
+    compose(beats, audio_path, composed, cfg, work_dir=output_dir / "_compose")
+    # Apply color grading as a separate pass (keeps composer tidy)
+    if enable_color_grading:
+        try:
+            from .render.grading import auto_preset, grade_clip
+            preset = auto_preset(theme=theme, mood=mood)
+            graded = str(output_dir / f"{job_id}_graded.mp4")
+            grade_clip(composed, graded, preset=preset)
+            composed = graded
+            progress({"event": "step", "step": "color_grading",
+                      "preset": preset, "status": "done"})
+        except Exception as e:
+            progress({"event": "step", "step": "color_grading",
+                      "status": "failed", "error": str(e)[:100]})
+
+    progress({"event": "step", "step": "compose", "status": "done"})
+
+    # ── 6. Karaoke subs with auto-style ────────────────────────────────
+    progress({"event": "step", "step": "subtitles", "status": "start"})
+    style = subtitle_style or auto_style(theme=theme, mood=mood)
+    ass_path = output_dir / f"{job_id}.ass"
+    build_ass_styled(tts.sentences, ass_path, style=style)
+    final = str(output_dir / f"{job_id}_FINAL.mp4")
+    try:
+        burn(composed, ass_path, final)
+    except Exception as e:
+        progress({"event": "step", "step": "subtitles", "status": "failed",
+                  "error": str(e)})
+        final = composed
+    progress({"event": "step", "step": "subtitles", "status": "done",
+              "style": style})
+
+    # ── 7. Cleanup intermediates ───────────────────────────────────────
+    if Path(final).exists() and Path(final).stat().st_size > 5_000:
+        _cleanup_intermediates(final, [
+            Path(audio_path),
+            Path(composed) if composed != final else Path("nope"),
+            ass_path, clips_dir, output_dir / "_compose",
+        ])
+
+    progress({"event": "done", "final": final, "solved": solved,
+              "total": len(beats),
+              "style": style,
+              "viderush_mode": True})
+    return {
+        "ok": True, "final": final, "solved": solved,
+        "total": len(beats),
+        "windows": len(windows),
+        "clusters": len({w.cluster_id for w in windows}),
+        "style": style,
+        "video_count": sum(1 for b in beats
+                            if b.is_solved and b.chosen and
+                            not b.chosen.source.endswith("_photo")),
+        "photo_count": sum(1 for b in beats
+                            if b.is_solved and b.chosen and
+                            b.chosen.source.endswith("_photo")),
+    }
