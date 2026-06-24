@@ -157,14 +157,23 @@ def issue_token(user: User, secret: str, ttl_seconds: int = 7 * 24 * 3600) -> st
 
 def verify_token(token: str, secret: str) -> dict | None:
     try:
-        header_b64, payload_b64, sig_b64 = token.split(".")
+        header_b64, payload_b64, sig_b64 = (token or "").split(".")
     except ValueError:
         return None
-    signing_input = f"{header_b64}.{payload_b64}".encode()
-    expected = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
-    if not hmac.compare_digest(expected, _b64d(sig_b64)):
+    try:
+        signing_input = f"{header_b64}.{payload_b64}".encode()
+        expected = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+        sig_bytes = _b64d(sig_b64)
+    except Exception:
+        return None  # malformed base64 in any segment → invalid token
+    if not hmac.compare_digest(expected, sig_bytes):
         return None
-    payload = json.loads(_b64d(payload_b64))
+    try:
+        payload = json.loads(_b64d(payload_b64))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
     if payload.get("exp", 0) < int(time.time()):
         return None
     return payload
